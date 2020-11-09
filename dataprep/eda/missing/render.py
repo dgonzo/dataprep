@@ -2,7 +2,7 @@
     This module implements the plot_missing(df, x, y) function's
     visualization part.
 """
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -16,13 +16,11 @@ from bokeh.models import (
     FactorRange,
     FuncTickFormatter,
     HoverTool,
-    LayoutDOM,
     LinearColorMapper,
     NumeralTickFormatter,
     Panel,
     PrintfTickFormatter,
     Range1d,
-    Tabs,
     Title,
 )
 from bokeh.plotting import Figure
@@ -38,15 +36,17 @@ __all__ = ["render_missing"]
 
 
 def render_missing(
-    itmdt: Intermediate, plot_width: int = 500, plot_height: int = 500,
-) -> LayoutDOM:
+    itmdt: Intermediate,
+    plot_width: int = 500,
+    plot_height: int = 500,
+) -> Dict[str, Any]:
     """
     @Jinglin write here
     """
     if itmdt.visual_type == "missing_impact":
         return render_missing_impact(itmdt, plot_width, plot_height)
     elif itmdt.visual_type == "missing_impact_1vn":
-        return render_missing_impact_1vn(itmdt, plot_width, plot_height)
+        return render_missing_impact_1vn(itmdt, plot_width - 176, plot_height - 200)
     elif itmdt.visual_type == "missing_impact_1v1":
         return render_missing_impact_1v1(itmdt, plot_width, plot_height)
     else:
@@ -63,12 +63,30 @@ def tweak_figure(fig: Figure) -> Figure:
     fig.axis.major_label_text_font_size = "9pt"
     fig.axis.major_label_standoff = 0
     fig.xaxis.major_label_orientation = np.pi / 3
+    # truncate axis tick values
+    format_js = """
+        if (tick.toString().length > 15) {
+            if (typeof tick === 'string') {
+                return tick.toString().substring(0, 13) + '...';
+            } else {
+                return tick.toPrecision(1);
+            }
+        } else {
+            return tick;
+        }
+    """
+    fig.xaxis.formatter = FuncTickFormatter(code=format_js)
+    fig.yaxis.formatter = FuncTickFormatter(code=format_js)
 
     return fig
 
 
 def render_dist(
-    df: pd.DataFrame, x: str, typ: str, plot_width: int, plot_height: int,
+    df: pd.DataFrame,
+    x: str,
+    typ: str,
+    plot_width: int,
+    plot_height: int,
 ) -> Figure:
     """
     Render a distribution, CDF or PDF
@@ -96,7 +114,11 @@ def render_dist(
     for idx, label in enumerate(LABELS):
         group = df[df["label"] == label]
         fig.line(
-            x="x", y=typ, source=group, color=CATEGORY10[idx], legend_label=label,
+            x="x",
+            y=typ,
+            source=group,
+            color=CATEGORY10[idx],
+            legend_label=label,
         )
 
     relocate_legend(fig, "right")
@@ -104,8 +126,13 @@ def render_dist(
     return fig
 
 
-def render_hist(
-    df: pd.DataFrame, x: str, meta: ColumnMetadata, plot_width: int, plot_height: int,
+def render_hist(  # pylint: disable=too-many-arguments
+    df: pd.DataFrame,
+    x: str,
+    meta: ColumnMetadata,
+    plot_width: int,
+    plot_height: int,
+    show_legend: bool,
 ) -> Figure:
     """
     Render a histogram
@@ -118,9 +145,7 @@ def render_hist(
         ]
     else:
         df = df.copy()
-        df["repr"] = [
-            f"[{row.lower_bound:.0f}~{row.upper_bound:.0f})" for row in df.itertuples()
-        ]
+        df["repr"] = [f"[{row.lower_bound:.0f}~{row.upper_bound:.0f})" for row in df.itertuples()]
 
         tooltips = [
             (x, "@repr"),
@@ -155,18 +180,31 @@ def render_hist(
             tooltips=tooltips,
         )
     )
+    if show_legend:
+        fig.vbar(
+            x="x",
+            width=radius,
+            top="count",
+            source=df,
+            fill_alpha=0.3,
+            color={"field": "label", "transform": cmapper},
+            legend_field="label",
+        )
 
-    fig.vbar(
-        x="x",
-        width=radius,
-        top="count",
-        source=df,
-        fill_alpha=0.3,
-        color={"field": "label", "transform": cmapper},
-        legend_field="label",
-    )
-
-    relocate_legend(fig, "right")
+        relocate_legend(fig, "right")
+    else:
+        shown, total = meta["partial"]
+        if shown != total:
+            fig.xaxis.axis_label = f"Top {shown} out of {total}"
+            fig.xaxis.axis_label_standoff = 0
+        fig.vbar(
+            x="x",
+            width=radius,
+            top="count",
+            source=df,
+            fill_alpha=0.3,
+            color={"field": "label", "transform": cmapper},
+        )
 
     return fig
 
@@ -272,16 +310,12 @@ def create_color_mapper_heatmap(
     return mapper, colorbar
 
 
-def render_missing_impact(
-    itmdt: Intermediate, plot_width: int, plot_height: int
-) -> Tabs:
+def render_missing_impact(itmdt: Intermediate, plot_width: int, plot_height: int) -> Dict[str, Any]:
     """
     Render correlation heatmaps in to tabs
     """
     tabs: List[Panel] = []
-    fig_barchart = render_bar_chart(
-        itmdt["data_bars"], "linear", plot_width, plot_height
-    )
+    fig_barchart = render_bar_chart(itmdt["data_bars"], "linear", plot_width, plot_height)
     tabs.append(Panel(child=row(fig_barchart), title="Bar Chart"))
 
     fig_spectrum = render_missing_spectrum(
@@ -292,18 +326,20 @@ def render_missing_impact(
     fig_heatmap = render_heatmaps(itmdt["data_heatmap"], plot_width, plot_height)
     tabs.append(Panel(child=row(fig_heatmap), title="Heatmap"))
 
-    fig_dendrogram = render_dendrogram(
-        itmdt["data_dendrogram"], plot_width, plot_height
-    )
+    fig_dendrogram = render_dendrogram(itmdt["data_dendrogram"], plot_width, plot_height)
     tabs.append(Panel(child=row(fig_dendrogram), title="Dendrogram"))
 
-    tabs = Tabs(tabs=tabs)
-    return tabs
+    stat_dict = {name: itmdt["missing_stat"][name] for name in itmdt["missing_stat"]}
+
+    return {
+        "insights": itmdt["insights"],
+        "tabledata": {"Missing Statistics": stat_dict},
+        "layout": [panel.child.children[0] for panel in tabs],
+        "meta": [panel.title for panel in tabs],
+    }
 
 
-def render_heatmaps(
-    df: Optional[pd.DataFrame], plot_width: int, plot_height: int
-) -> Figure:
+def render_heatmaps(df: Optional[pd.DataFrame], plot_width: int, plot_height: int) -> Figure:
     """
     Render missing heatmaps in to tabs
     """
@@ -331,9 +367,7 @@ def render_heatmaps(
 
     if df is not None:
 
-        df = df.where(
-            np.triu(np.ones(df.shape)).astype(np.bool)  # pylint: disable=no-member
-        ).T
+        df = df.where(np.triu(np.ones(df.shape)).astype(np.bool)).T  # pylint: disable=no-member
 
         if df.size != 0:
             x_range = FactorRange(*df.columns)
@@ -369,12 +403,6 @@ def render_heatmaps(
                 fill_color={"field": "correlation", "transform": mapper},
                 line_color=None,
             )
-            format_js = """
-                if (tick.length > 15) return tick.substring(0, 13) + '...';
-                else return tick;
-            """
-            fig.xaxis.formatter = FuncTickFormatter(code=format_js)
-            fig.yaxis.formatter = FuncTickFormatter(code=format_js)
         else:
             fig = empty_figure()
     else:
@@ -450,12 +478,6 @@ def render_bar_chart(
         )
         fig.add_tools(hover)
 
-    format_js = """
-        if (tick.length > 18) return tick.substring(0, 16) + '...';
-        else return tick;
-    """
-    fig.xaxis.formatter = FuncTickFormatter(code=format_js)
-
     fig.yaxis.axis_label = "Row Count"
     tweak_figure(fig)
     relocate_legend(fig, "right")
@@ -527,9 +549,7 @@ def render_missing_spectrum(
     return fig
 
 
-def render_dendrogram(
-    dend: Dict["str", Any], plot_width: int, plot_height: int
-) -> Figure:
+def render_dendrogram(dend: Dict["str", Any], plot_width: int, plot_height: int) -> Figure:
     """
     Render a missing dendrogram.
     """
@@ -541,7 +561,10 @@ def render_dendrogram(
         plot_width = 28 * len(cols)
 
     fig = Figure(
-        plot_width=plot_width, plot_height=plot_height, toolbar_location=None, tools="",
+        plot_width=plot_width,
+        plot_height=plot_height,
+        toolbar_location=None,
+        tools="",
     )
 
     # round the coordinates to integers, and plot the dendrogram
@@ -576,8 +599,10 @@ def render_dendrogram(
 
 
 def render_missing_impact_1vn(
-    itmdt: Intermediate, plot_width: int, plot_height: int,
-) -> Tabs:
+    itmdt: Intermediate,
+    plot_width: int,
+    plot_height: int,
+) -> Dict[str, Any]:
     """
     Render the plot from `plot_missing(df, "x")`
     """
@@ -585,27 +610,27 @@ def render_missing_impact_1vn(
     dfs = itmdt["data"]
     x = itmdt["x"]
     meta = itmdt["meta"]
-
     panels = []
     for col, df in dfs.items():
-        fig = render_hist(df, col, meta[col], plot_width, plot_height)
-        shown, total = meta[col]["partial"]
-
-        if shown != total:
-            fig.title = Title(
-                text=f"Missing impact of {x} by ({shown} out of {total}) {col}"
-            )
-        else:
-            fig.title = Title(text=f"Missing impact of {x} by {col}")
+        fig = render_hist(df, col, meta[col], plot_width, plot_height, False)
+        fig.frame_height = plot_height
+        fig.title = Title(text=f"Missing impact of {x} by {col}")
         panels.append(Panel(child=fig, title=col))
-
-    tabs = Tabs(tabs=panels)
-    return tabs
+    legend_colors = [CATEGORY10[count] for count in range(len(LABELS))]
+    return {
+        "layout": [panel.child for panel in panels],
+        "fig_width": plot_width,
+        "legend_labels": [
+            {"label": label, "color": color} for label, color in zip(LABELS, legend_colors)
+        ],
+    }
 
 
 def render_missing_impact_1v1(
-    itmdt: Intermediate, plot_width: int, plot_height: int,
-) -> Union[Tabs, Figure]:
+    itmdt: Intermediate,
+    plot_width: int,
+    plot_height: int,
+) -> Dict[str, List[Any]]:
     """
     Render the plot from `plot_missing(df, "x", "y")`
     """
@@ -615,7 +640,7 @@ def render_missing_impact_1v1(
     if is_dtype(meta["dtype"], Continuous()):
         panels = []
 
-        fig = render_hist(itmdt["hist"], y, meta, plot_width, plot_height)
+        fig = render_hist(itmdt["hist"], y, meta, plot_width, plot_height, True)
         panels.append(Panel(child=fig, title="Histogram"))
 
         fig = render_dist(itmdt["dist"], y, "pdf", plot_width, plot_height)
@@ -627,16 +652,16 @@ def render_missing_impact_1v1(
         fig = render_boxwhisker(itmdt["box"], plot_width, plot_height)
         panels.append(Panel(child=fig, title="Box"))
 
-        tabs = Tabs(tabs=panels)
-        return tabs
+        return {
+            "layout": [panel.child for panel in panels],
+            "meta": [panel.title for panel in panels],
+        }
     else:
-        fig = render_hist(itmdt["hist"], y, meta, plot_width, plot_height)
+        fig = render_hist(itmdt["hist"], y, meta, plot_width, plot_height, True)
 
         shown, total = meta["partial"]
         if shown != total:
-            fig.title = Title(
-                text=f"Missing impact of {x} by ({shown} out of {total}) {y}"
-            )
+            fig.title = Title(text=f"Missing impact of {x} by ({shown} out of {total}) {y}")
         else:
             fig.title = Title(text=f"Missing impact of {x} by {y}")
-        return fig
+        return {"layout": [fig], "meta": [fig.title.text]}

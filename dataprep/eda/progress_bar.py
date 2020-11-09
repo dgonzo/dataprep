@@ -81,9 +81,7 @@ class ProgressBar(Callback):  # type: ignore
 
         self._pbar_runtime += time() - then
 
-    def _pretask(
-        self, key: Union[str, Tuple[str, ...]], _dsk: Any, _state: Dict[str, Any]
-    ) -> None:
+    def _pretask(self, key: Union[str, Tuple[str, ...]], _dsk: Any, _state: Dict[str, Any]) -> None:
         """A hook called before one task gets executed."""
         if self._disable:
             return
@@ -147,10 +145,7 @@ class ProgressBar(Callback):  # type: ignore
 
         self._pbar_runtime += time() - then
 
-        if (
-            self._pbar_runtime > 0.1 * (time() - self._started)
-            and self._pbar_runtime > 1
-        ):
+        if self._pbar_runtime > 0.1 * (time() - self._started) and self._pbar_runtime > 1:
             print(
                 "[ProgressBar] ProgressBar takes additional 10%+ of the computation time,"
                 " consider disable it by passing 'progress=False' to the plot function.",
@@ -185,6 +180,7 @@ class ProgressBar(Callback):  # type: ignore
                 dynamic_ncols=True,
                 mininterval=self._interval,
                 initial=ndone,
+                leave=False,
             )
         else:
             self._pbar = tqdm(
@@ -192,6 +188,7 @@ class ProgressBar(Callback):  # type: ignore
                 ncols=self._width,
                 mininterval=self._interval,
                 initial=ndone,
+                leave=False,
             )
 
         self._pbar.set_description(desc)
@@ -209,11 +206,7 @@ class ProgressBar(Callback):  # type: ignore
         return ndone, ntasks
 
     def register(self) -> None:
-        raise ValueError(
-            "ProgressBar is not thread safe thus cannot be regestered globally"
-        )
+        raise ValueError("ProgressBar is not thread safe thus cannot be regestered globally")
 
     def unregister(self) -> None:
-        raise ValueError(
-            "ProgressBar is not thread safe thus cannot be unregestered globally"
-        )
+        raise ValueError("ProgressBar is not thread safe thus cannot be unregestered globally")

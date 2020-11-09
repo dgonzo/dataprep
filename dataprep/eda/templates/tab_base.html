@@ -2,8 +2,8 @@
 
 <head>
     <title> {{ context.title }} </title>
-    {% include 'univariate_scripts.html' %}
-    {% include 'univariate_styles.html' %}
+    {% include 'tab_scripts.html' %}
+    {% include 'tab_styles.html' %}
 </head>
 
 <body>
@@ -44,8 +44,8 @@
                     <div class="insight-panel-{{ context.rnd }}">
                         <ol>
                             {% for insight in context.insights[context.meta[loop.index]] %}
-                            <li class="entry-{{ context.rnd }}">
-                                {{ insight }}
+                            <li class="entry-{{ context.rnd }}"><span
+                                class="col-name-{{ context.rnd }}">{{ insight.split(' ')[0] }}</span>{{ insight.replace(insight.split(' ')[0], '') }}
                             </li>
                             {% endfor %}
                         </ol>

@@ -61,6 +61,8 @@ class Connector:
         The parameters for authentication, e.g. OAuth2
     _concurrency: int = 5
         The concurrency setting. By default it is 1 reqs/sec.
+    update: bool = True
+        Force update the config file even if the local version exists.
     **kwargs
         Parameters that shared by different queries.
 
@@ -82,6 +84,8 @@ class Connector:
     def __init__(
         self,
         config_path: str,
+        *,
+        update: bool = False,
         _auth: Optional[Dict[str, Any]] = None,
         _concurrency: int = 1,
         **kwargs: Any,
@@ -94,7 +98,7 @@ class Connector:
             path = Path(config_path).resolve()
         else:
             # From Github!
-            ensure_config(config_path)
+            ensure_config(config_path, update)
             path = config_directory() / config_path
 
         self._impdb = ImplicitDatabase(path)
@@ -178,11 +182,7 @@ class Connector:
             tbs[cur_table]["joined_query_fields"] = example_query_fields
 
         # show table info
-        print(
-            INFO_TEMPLATE.render(
-                ntables=len(self.table_names), dbname=self._impdb.name, tbs=tbs
-            )
-        )
+        print(INFO_TEMPLATE.render(ntables=len(self.table_names), dbname=self._impdb.name, tbs=tbs))
 
     def show_schema(self, table_name: str) -> pd.DataFrame:
         """This method shows the schema of the table that will be returned,
@@ -388,9 +388,7 @@ class Connector:
 
         if reqdef.body is not None:
             # TODO: do we support binary body?
-            instantiated_fields = populate_field(
-                reqdef.body.content, self._jenv, merged_vars
-            )
+            instantiated_fields = populate_field(reqdef.body.content, self._jenv, merged_vars)
             if reqdef.body.ctype == "application/x-www-form-urlencoded":
                 req_data["data"] = instantiated_fields
             elif reqdef.body.ctype == "application/json":
@@ -425,9 +423,7 @@ class Connector:
 
         if _q is not None:
             if reqdef.search is None:
-                raise ValueError(
-                    "_q specified but the API does not support custom search."
-                )
+                raise ValueError("_q specified but the API does not support custom search.")
 
             searchdef = reqdef.search
             search_key = searchdef.key
@@ -440,7 +436,9 @@ class Connector:
             field_def = getattr(reqdef, key, None)
             if field_def is not None:
                 instantiated_fields = populate_field(
-                    field_def, self._jenv, merged_vars,
+                    field_def,
+                    self._jenv,
+                    merged_vars,
                 )
                 for ikey in instantiated_fields:
                     if ikey in req_data[key]:
@@ -508,7 +506,9 @@ def validate_fields(fields: Dict[str, FieldDefUnion], data: Dict[str, Any]) -> N
 
 
 def populate_field(  # pylint: disable=too-many-branches
-    fields: Dict[str, FieldDefUnion], jenv: Environment, params: Dict[str, Any],
+    fields: Dict[str, FieldDefUnion],
+    jenv: Environment,
+    params: Dict[str, Any],
 ) -> Dict[str, str]:
     """Populate a dict based on the fields definition and provided vars."""
     ret: Dict[str, str] = {}
